@@ -7,11 +7,9 @@ import cv2
 import sys
 import numpy as np
 
-
-
+# Constructor for the My_App class.
+# Initializes the application and sets up the user interface.
 class My_App(QtWidgets.QMainWindow):
-
-
     def __init__(self):
         super(My_App, self).__init__()
         loadUi("./SIFT_app.ui", self)
@@ -32,7 +30,9 @@ class My_App(QtWidgets.QMainWindow):
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self.SLOT_query_camera)
         self._timer.setInterval(1000 / self._cam_fps)
-        
+
+    # Slot function triggered when the user clicks the browse button.
+    # Opens a file dialog for selecting a template image file.
     def SLOT_browse_button(self):
         dlg = QtWidgets.QFileDialog()
         dlg.setFileMode(QtWidgets.QFileDialog.ExistingFile)
@@ -43,6 +43,8 @@ class My_App(QtWidgets.QMainWindow):
         self.template_label.setPixmap(pixmap)
         print("Loaded template image file: " + self.template_path)
 
+    # Slot function triggered when the user clicks the toggle camera button.
+    # Starts or stops the camera stream.
     def SLOT_toggle_camera(self):
         if not self._is_cam_enabled:
             self._camera_device.open(self._cam_id)
@@ -55,6 +57,8 @@ class My_App(QtWidgets.QMainWindow):
             self._is_cam_enabled = False
             self.toggle_cam_button.setText("Start Camera")
 
+    # Slot function triggered by the timer to query camera frames.
+    # Processes and displays camera frames as needed.
     def SLOT_query_camera(self):
         ret, frame = self._camera_device.read()
         if ret:
@@ -66,73 +70,19 @@ class My_App(QtWidgets.QMainWindow):
             pixmap = QtGui.QPixmap.fromImage(qImg)
             self.camera_label.setPixmap(pixmap)
 
-
-        # Source: stackoverflow.com/questions/34232632/
+    # Converts an OpenCV image to a QPixmap.
+    # @param cv_img: OpenCV image.
+    # @return: QPixmap representation of the input image.
     def convert_cv_to_pixmap(self, cv_img):
         cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
         height, width, channel = cv_img.shape
         bytesPerLine = channel * width
-        q_img = QtGui.QImage(cv_img.data, width, height, 
-                        bytesPerLine, QtGui.QImage.Format_RGB888)
+        q_img = QtGui.QImage(cv_img.data, width, height, bytesPerLine, QtGui.QImage.Format_RGB888)
         return QtGui.QPixmap.fromImage(q_img)
-
-    def SLOT_query_camera(self):
-        ret, frame = self._camera_device.read()
-        
-        img = cv2.imread(self.template_path, cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-        print("******Image read")
-
-        # Features
-        sift = cv2.xfeatures2d.SIFT_create()
-        kp_image, desc_image = sift.detectAndCompute(img, None)
-        
-        # Feature matching
-        index_params = dict(algorithm=0, trees=5)
-        search_params = dict()
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-        grayframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # trainimage
-        kp_grayframe, desc_grayframe = sift.detectAndCompute(grayframe, None)
-        matches = flann.knnMatch(desc_image, desc_grayframe, k=2)
-        good_points = []
-        for m, n in matches:
-            if m.distance < 0.6 * n.distance:
-                good_points.append(m)
-
-        if (len(good_points) > 10):    
-            query_pts = np.float32([kp_image[m.queryIdx].pt for m in good_points]).reshape(-1, 1, 2)
-            print(query_pts)
-            
-            train_pts = np.float32([kp_grayframe[m.trainIdx].pt for m in good_points]).reshape(-1 , 1, 2)
-            print(train_pts)
-            matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
-            matches_mask = mask.ravel().tolist()
-
-            # Perspective transform
-            h, w = img.shape
-            pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
-            dst = cv2.perspectiveTransform(pts, matrix)
-
-            homography = cv2.polylines(frame, [np.int32(dst)], True, (255, 0, 0), 3)
-            cv2.imshow("Homography", homography)
-            pixmap = self.convert_cv_to_pixmap(frame)
-            self.live_image_label.setPixmap(pixmap)
-        else:
-            pixmap = self.convert_cv_to_pixmap(frame)
-            self.live_image_label.setPixmap(pixmap)
-
-    def SLOT_toggle_camera(self):
-        if self._is_cam_enabled:
-            self._timer.stop()
-            self._is_cam_enabled = False
-            self.toggle_cam_button.setText("&Enable camera")
-        else:
-            self._timer.start()
-            self._is_cam_enabled = True
-            self.toggle_cam_button.setText("&Disable camera")
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     myApp = My_App()
     myApp.show()
     sys.exit(app.exec_())
+
