@@ -7,10 +7,11 @@ import cv2
 import sys
 import numpy as np
 
-# Constructor for the My_App class.
-# Initializes the application and sets up the user interface.
+# Define the My_App class.
 class My_App(QtWidgets.QMainWindow):
     def __init__(self):
+        # Constructor for the My_App class.
+        # Initializes the application and sets up the user interface.
         super(My_App, self).__init__()
         loadUi("./SIFT_app.ui", self)
 
@@ -80,9 +81,77 @@ class My_App(QtWidgets.QMainWindow):
         q_img = QtGui.QImage(cv_img.data, width, height, bytesPerLine, QtGui.QImage.Format_RGB888)
         return QtGui.QPixmap.fromImage(q_img)
 
+    # Slot function triggered when the user clicks the toggle camera button.
+    # Starts or stops the camera stream.
+    def SLOT_toggle_camera(self):
+        if self._is_cam_enabled:
+            self._timer.stop()
+            self._is_cam_enabled = False
+            self.toggle_cam_button.setText("&Enable camera")
+        else:
+            self._timer.start()
+            self._is_cam_enabled = True
+            self.toggle_cam_button.setText("&Disable camera")
+    # Slot function trigerred when the camera is on
+    # Captures the frames of the camera then uses image recognition to look for an image in the frame
+    #If found the image will be highlighted with a blue rectangular frame in the image live stream and a window will pop up of the live stream from the camera.
+    def SLOT_query_camera(self):
+        ret, frame = self._camera_device.read()
+
+        img = cv2.imread(self.template_path, cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+       
+
+        # Features
+        sift = cv2.xfeatures2d.SIFT_create()
+        kp_image, desc_image = sift.detectAndCompute(img, None)
+
+        # Feature matching
+        index_params = dict(algorithm=0, trees=5)
+        search_params = dict()
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        grayframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # trainimage
+        kp_grayframe, desc_grayframe = sift.detectAndCompute(grayframe, None)
+        matches = flann.knnMatch(desc_image, desc_grayframe, k=2)
+        good_points = []
+        for m, n in matches:
+            if m.distance < 0.6 * n.distance:
+                good_points.append(m)
+
+        if (len(good_points) > 6):    
+            query_pts = np.float32([kp_image[m.queryIdx].pt for m in good_points]).reshape(-1, 1, 2)
+
+
+            train_pts = np.float32([kp_grayframe[m.trainIdx].pt for m in good_points]).reshape(-1 , 1, 2)
+
+            matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+            matches_mask = mask.ravel().tolist()
+
+            # Perspective transform
+            h, w = img.shape
+            pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+            dst = cv2.perspectiveTransform(pts, matrix)
+
+            homography = cv2.polylines(frame, [np.int32(dst)], True, (255, 0, 0), 3)
+            cv2.imshow("Homography", homography)
+            pixmap = self.convert_cv_to_pixmap(frame)
+            self.live_image_label.setPixmap(pixmap)
+        else:
+            pixmap = self.convert_cv_to_pixmap(frame)
+            self.live_image_label.setPixmap(pixmap)
+
+    def SLOT_toggle_camera(self):
+        if self._is_cam_enabled:
+            self._timer.stop()
+            self._is_cam_enabled = False
+            self.toggle_cam_button.setText("&Enable camera")
+        else:
+            self._timer.start()
+            self._is_cam_enabled = True
+            self.toggle_cam_button.setText("&Disable camera")
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     myApp = My_App()
     myApp.show()
     sys.exit(app.exec_())
-
